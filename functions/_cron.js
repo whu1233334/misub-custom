@@ -3,6 +3,8 @@
  * 根据不同的定时任务执行相应的逻辑
  */
 
+import { rotateSubscriptionToken } from './modules/handlers/rotate-token.js';
+
 export async function onRequest(context) {
     const { request, env } = context;
 
@@ -30,6 +32,12 @@ export async function onRequest(context) {
 
             case 'traffic-check':
                 result = await performTrafficCheck(env);
+                break;
+
+            case 'rotate-sub-token':
+                result = await rotateSubscriptionToken(env, {
+                    baseUrl: env.MISUB_PUBLIC_URL || new URL(request.url).origin,
+                });
                 break;
 
             default:

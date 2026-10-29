@@ -12,6 +12,7 @@ import {
     sendEnhancedTgNotification as sendCoreEnhancedTg,
     tgEscape as coreTgEscape,
 } from '../services/notification-service.js';
+import { rotateSubscriptionToken } from './handlers/rotate-token.js';
 
 /**
  * 转义 Telegram HTML 特殊字符
@@ -341,6 +342,36 @@ export async function handleCronTrigger(env) {
         }
 
         await sendCoreTg(settings, updateMessage);
+    }
+
+    // ===== 订阅 Token 每 2 天轮换 + 推送 =====
+    // 复用本 cron 触发点：仅在距上次轮换满 2 天时才执行，避免每次 cron 都换。
+    try {
+        const ROTATE_INTERVAL_MS = 2 * 24 * 60 * 60 * 1000; // 2 天
+        const lastRotatedAt = Number(settings.mytokenRotatedAt) || 0;
+        const dueToRotate =
+            settings.mytokenAutoRotate !== false && // 默认启用；设为 false 可关闭
+            Date.now() - lastRotatedAt >= ROTATE_INTERVAL_MS;
+
+        if (dueToRotate) {
+            const rotateResult = await rotateSubscriptionToken(env, {
+                baseUrl: env.MISUB_PUBLIC_URL || undefined,
+            });
+            // 记录本次轮换时间，写回设置（rotateSubscriptionToken 已写回 mytoken，这里补记时间）
+            const latestSettings = (await storageAdapter.get(KV_KEY_SETTINGS)) || settings;
+            latestSettings.mytokenRotatedAt = Date.now();
+            await storageAdapter.put(KV_KEY_SETTINGS, latestSettings);
+
+            summary.summary.tokenRotated = true;
+            summary.summary.newToken = rotateResult.newToken;
+            summary.summary.nodeTotal = rotateResult.total;
+            console.info('[Cron] Subscription token rotated:', rotateResult.newToken);
+        } else {
+            summary.summary.tokenRotated = false;
+        }
+    } catch (rotateError) {
+        console.error('[Cron] Token rotation failed:', rotateError);
+        summary.summary.tokenRotateError = rotateError.message;
     }
 
     return new Response(JSON.stringify(summary), {
