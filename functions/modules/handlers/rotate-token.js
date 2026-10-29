@@ -208,8 +208,13 @@ export async function rotateSubscriptionToken(env, options = {}) {
     const stats = await collectNodeStats(env, subscriptions, settings);
 
     // 3. 组装完整链接
-    const base = String(options.baseUrl || env?.MISUB_PUBLIC_URL || '').replace(/\/+$/, '');
-    const fullLink = `${base}/sub/${newToken}`;
+    // 拼接站点根地址（优先级：显式 MISUB_PUBLIC_URL > CF_PAGES_URL > 传入 baseUrl）
+    // 注意：cron 触发时 request.url.origin 不可靠（不是站点域名），必须在调用处传 CF_PAGES_URL。
+    const base = String(options.baseUrl || env?.MISUB_PUBLIC_URL || env?.CF_PAGES_URL || '').replace(
+        /\/+$/,
+        ''
+    );
+    const fullLink = base ? `${base}/sub/${newToken}` : `/sub/${newToken}`;
 
     // 4. 推送 TG
     const tgSettings = options.tgOverride
